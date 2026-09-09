@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0c1a2b">
+<title>Keeper — Diorama Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sea-deep:#0c1a2b;      /* night ocean base */
+  --sea-panel:#132639;     /* raised surface */
+  --sea-line:#1f3a52;      /* hairlines */
+  --foam:#e9f0f4;          /* primary text */
+  --mist:#8fa6b8;          /* secondary text */
+  --beacon:#ffb347;        /* the lamp */
+  --beacon-deep:#e08f1f;
+  --tide:#46b5a4;          /* waves / ok states */
+  --buoy:#e2635a;          /* stop / alerts */
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{
+  font-family:"Bricolage Grotesque",system-ui,sans-serif;
+  background:var(--sea-deep);
+  color:var(--foam);
+  min-height:100dvh;
+  font-variant-numeric:tabular-nums;
+}
+.app{max-width:430px;margin:0 auto;padding-bottom:96px}
+
+/* ---------- top bar ---------- */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:calc(14px + env(safe-area-inset-top)) 20px 10px;
+}
+.topbar h1{font-size:1.15rem;font-weight:700;letter-spacing:.01em}
+.topbar h1 small{display:block;font-size:.72rem;font-weight:400;color:var(--mist)}
+.linkchip{
+  display:flex;align-items:center;gap:7px;
+  border:1px solid var(--sea-line);border-radius:999px;
+  padding:7px 12px;font-size:.78rem;color:var(--mist);
+  background:var(--sea-panel);cursor:pointer;font-family:inherit;
+}
+.linkchip .dot{width:8px;height:8px;border-radius:50%;background:var(--buoy);transition:background .3s}
+.linkchip.on .dot{background:var(--tide);box-shadow:0 0 8px var(--tide)}
+.linkchip.demo .dot{background:var(--beacon)}
+
+/* ---------- hero: the light itself ---------- */
+.hero{position:relative;height:230px;overflow:hidden;margin:4px 0 0}
+.hero svg{width:100%;height:100%;display:block}
+.beam-wrap{transform-origin:215px 74px}
+.beam{opacity:0;transition:opacity .4s}
+.rotating .beam{opacity:1}
+@keyframes sweep{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.rotating .beam-wrap{animation:sweep var(--sweep,6s) linear infinite}
+.rotating.rev .beam-wrap{animation-direction:reverse}
+.lamp{transition:opacity .3s}
+.lamp-glow{transition:opacity .3s}
+@keyframes lampPulse{0%,100%{opacity:.15}50%{opacity:1}}
+.pulsing .lamp,.pulsing .lamp-glow,.pulsing .beam{animation:lampPulse 2.4s ease-in-out infinite}
+.wave-a,.wave-b{transition:opacity .5s}
+@keyframes drift{from{transform:translateX(0)}to{transform:translateX(-120px)}}
+.waves-on .wave-a{animation:drift calc(var(--wavedur,7s)) linear infinite}
+.waves-on .wave-b{animation:drift calc(var(--wavedur,7s) * 1.6) linear infinite reverse}
+.fogbank{opacity:0;transition:opacity 1.2s}
+.fog-on .fogbank{opacity:.75}
+@keyframes fogdrift{from{transform:translateX(-40px)}to{transform:translateX(40px)}}
+.fog-on .fogbank g{animation:fogdrift 9s ease-in-out infinite alternate}
+@media (prefers-reduced-motion:reduce){
+  .beam-wrap,.wave-a,.wave-b,.fogbank g,.pulsing .lamp,.pulsing .lamp-glow,.pulsing .beam{animation:none !important}
+}
+
+/* ---------- sensors tide-line ---------- */
+.tideline{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  border-top:1px solid var(--sea-line);border-bottom:1px solid var(--sea-line);
+  background:linear-gradient(180deg,rgba(19,38,57,.6),transparent);
+}
+.tideline div{padding:12px 6px;text-align:center}
+.tideline div+div{border-left:1px solid var(--sea-line)}
+.tideline b{display:block;font-size:1.05rem;font-weight:600}
+.tideline span{font-size:.68rem;color:var(--mist)}
+.tideline .warn b{color:var(--beacon)}
+
+/* ---------- sections ---------- */
+section{padding:18px 20px 6px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+.sec-head h2{font-size:1rem;font-weight:600}
+.sec-head .state{font-size:.75rem;color:var(--mist)}
+.sec-head .state.live{color:var(--tide)}
+section+section{border-top:1px solid var(--sea-line);margin-top:14px}
+
+/* controls */
+.row{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.row label{flex:1;font-size:.85rem;color:var(--mist)}
+.row .val{font-size:.85rem;min-width:44px;text-align:right;color:var(--foam)}
+
+input[type=range]{
+  flex:2.2;appearance:none;height:30px;background:transparent;
+}
+input[type=range]::-webkit-slider-runnable-track{
+  height:6px;border-radius:3px;background:var(--sea-line);
+}
+input[type=range]::-webkit-slider-thumb{
+  appearance:none;width:26px;height:26px;border-radius:50%;
+  background:var(--foam);border:6px solid var(--sea-panel);
+  margin-top:-10px;box-shadow:0 0 0 1px var(--sea-line);
+}
+input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4px;border-radius:6px}
+
+.toggle{
+  position:relative;width:52px;height:30px;border-radius:999px;flex:none;
+  background:var(--sea-line);border:none;cursor:pointer;transition:background .25s;
+}
+.toggle::after{
+  content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;
+  background:var(--foam);transition:transform .25s;
+}
+.toggle[aria-pressed=true]{background:var(--tide)}
+.toggle[aria-pressed=true].amber{background:var(--beacon-deep)}
+.toggle[aria-pressed=true]::after{transform:translateX(22px)}
+.toggle:focus-visible{outline:2px solid var(--beacon);outline-offset:3px}
+
+.segment{display:flex;border:1px solid var(--sea-line);border-radius:10px;overflow:hidden;flex:2.2}
+.segment button{
+  flex:1;padding:9px 0;font-size:.8rem;background:transparent;border:none;
+  color:var(--mist);font-family:inherit;cursor:pointer;
+}
+.segment button[aria-pressed=true]{background:var(--sea-panel);color:var(--foam);font-weight:600}
+.segment button:focus-visible{outline:2px solid var(--beacon);outline-offset:-2px}
+
+.hint{font-size:.72rem;color:var(--mist);margin:-6px 0 14px}
+.flag{
+  font-size:.78rem;padding:8px 12px;border-radius:10px;margin-bottom:14px;
+  background:rgba(70,181,164,.12);color:var(--tide);display:none;
+}
+.flag.show{display:block}
+
+/* ---------- connection sheet ---------- */
+.sheet-back{
+  position:fixed;inset:0;background:rgba(4,10,18,.6);backdrop-filter:blur(3px);
+  display:none;align-items:flex-end;z-index:20;
+}
+.sheet-back.open{display:flex}
+.sheet{
+  width:100%;max-width:430px;margin:0 auto;background:var(--sea-panel);
+  border-radius:18px 18px 0 0;padding:20px 20px calc(24px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--sea-line);
+}
+.sheet h3{font-size:1rem;margin-bottom:4px}
+.sheet p{font-size:.8rem;color:var(--mist);margin-bottom:14px}
+.sheet input[type=text]{
+  width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--sea-line);
+  background:var(--sea-deep);color:var(--foam);font-family:inherit;font-size:1rem;
+}
+.sheet .btns{display:flex;gap:10px;margin-top:14px}
+.sheet button{
+  flex:1;padding:12px;border-radius:10px;border:1px solid var(--sea-line);
+  background:transparent;color:var(--foam);font-family:inherit;font-size:.9rem;cursor:pointer;
+}
+.sheet button.primary{background:var(--beacon);border-color:var(--beacon);color:#1b1204;font-weight:600}
+.sheet .demo-note{margin-top:12px;font-size:.72rem;color:var(--mist)}
+
+/* proximity banner */
+.finish{
+  position:fixed;left:50%;transform:translate(-50%,-120%);top:10px;z-index:30;
+  background:var(--tide);color:#052019;font-weight:600;font-size:.85rem;
+  padding:10px 18px;border-radius:999px;transition:transform .35s;
+}
+.finish.show{transform:translate(-50%,calc(env(safe-area-inset-top)))}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <h1>Keeper<small>Lighthouse diorama console</small></h1>
+    <button class="linkchip" id="linkChip" aria-label="Connection settings">
+      <span class="dot"></span><span id="linkLabel">Not connected</span>
+    </button>
+  </header>
+
+  <!-- HERO: live picture of the diorama's state -->
+  <div class="hero" id="hero" aria-hidden="true">
+    <svg viewBox="0 0 430 230" preserveAspectRatio="xMidYMax slice">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#0a1524"/><stop offset="1" stop-color="#10263c"/>
+        </linearGradient>
+        <linearGradient id="beamGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#ffb347" stop-opacity=".55"/>
+          <stop offset="1" stop-color="#ffb347" stop-opacity="0"/>
+        </linearGradient>
+        <radialGradient id="glow" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#ffb347" stop-opacity=".9"/>
+          <stop offset="1" stop-color="#ffb347" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect width="430" height="230" fill="url(#sky)"/>
+      <circle cx="70" cy="42" r="1.2" fill="#e9f0f4" opacity=".5"/>
+      <circle cx="120" cy="26" r="1" fill="#e9f0f4" opacity=".35"/>
+      <circle cx="330" cy="38" r="1.3" fill="#e9f0f4" opacity=".5"/>
+      <circle cx="380" cy="70" r="1" fill="#e9f0f4" opacity=".3"/>
+      <circle cx="35" cy="90" r="1" fill="#e9f0f4" opacity=".3"/>
+
+      <!-- rotating beam -->
+      <g class="beam-wrap" id="beamWrap">
+        <polygon class="beam" id="beamPoly" points="215,74 430,44 430,104" fill="url(#beamGrad)"/>
+      </g>
+
+      <!-- lamp glow -->
+      <circle class="lamp-glow" id="lampGlow" cx="215" cy="74" r="34" fill="url(#glow)"/>
+
+      <!-- lighthouse -->
+      <g>
+        <polygon points="200,110 230,110 236,196 194,196" fill="#22405c"/>
+        <rect x="199" y="128" width="32" height="9" fill="#e9f0f4" opacity=".9"/>
+        <rect x="197" y="152" width="36" height="9" fill="#e9f0f4" opacity=".9"/>
+        <rect x="196" y="176" width="38" height="9" fill="#e9f0f4" opacity=".9"/>
+        <rect x="203" y="86" width="24" height="24" fill="#1a3450"/>
+        <rect class="lamp" id="lampRect" x="207" y="66" width="16" height="16" rx="2" fill="#ffb347"/>
+        <rect x="203" y="82" width="24" height="5" fill="#2b4d6e"/>
+        <polygon points="204,66 226,66 215,54" fill="#2b4d6e"/>
+        <polygon points="150,196 290,196 268,180 240,188 214,178 188,190 166,182" fill="#183048"/>
+      </g>
+
+      <!-- boat -->
+      <g id="boat" transform="translate(90,187)">
+        <polygon points="0,8 34,8 28,16 6,16" fill="#26476a"/>
+        <rect x="14" y="0" width="4" height="9" fill="#8fa6b8"/>
+      </g>
+
+      <!-- waves -->
+      <g class="wave-a" opacity=".9">
+        <path d="M-120 208 Q -90 200 -60 208 T 0 208 T 60 208 T 120 208 T 180 208 T 240 208 T 300 208 T 360 208 T 420 208 T 480 208 T 540 208 V 230 H -120 Z" fill="#14314b"/>
+      </g>
+      <g class="wave-b" opacity=".9">
+        <path d="M-120 216 Q -90 210 -60 216 T 0 216 T 60 216 T 120 216 T 180 216 T 240 216 T 300 216 T 360 216 T 420 216 T 480 216 T 540 216 V 230 H -120 Z" fill="#0f2740"/>
+      </g>
+
+      <!-- fog -->
+      <g class="fogbank">
+        <g>
+          <ellipse cx="80" cy="200" rx="120" ry="26" fill="#8fa6b8" opacity=".25"/>
+          <ellipse cx="260" cy="192" rx="150" ry="30" fill="#8fa6b8" opacity=".22"/>
+          <ellipse cx="400" cy="204" rx="120" ry="24" fill="#8fa6b8" opacity=".25"/>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <!-- SENSORS -->
+  <div class="tideline" role="status" aria-label="Sensor readings">
+    <div><b id="sTemp">–</b><span>°C air</span></div>
+    <div id="humCell"><b id="sHum">–</b><span>% humidity</span></div>
+    <div><b id="sLight">–</b><span>light</span></div>
+    <div><b id="sPot">–</b><span>dial</span></div>
+  </div>
+
+  <!-- BEACON -->
+  <section>
+    <div class="sec-head"><h2>Beacon lamp</h2><span class="state" id="beaconState">off</span></div>
+    <div class="row">
+      <label for="beaconLevel">Brightness</label>
+      <input type="range" id="beaconLevel" min="0" max="100" value="0">
+      <span class="val" id="beaconVal">0%</span>
+    </div>
+    <div class="row">
+      <label>Pattern</label>
+      <div class="segment" role="group" aria-label="Beacon pattern">
+        <button id="modeSteady" aria-pressed="true">Steady</button>
+        <button id="modePulse" aria-pressed="false">Pulse</button>
+      </div>
+    </div>
+    <p class="hint">Drives the 1&nbsp;W star LED through the MOSFET module (PWM fade).</p>
+  </section>
+
+  <!-- ROTATION -->
+  <section>
+    <div class="sec-head"><h2>Rotation</h2><span class="state" id="rotState">stopped</span></div>
+    <div class="row">
+      <label for="rotToggle">Sweep the light</label>
+      <button class="toggle" id="rotToggle" aria-pressed="false" aria-label="Rotation on or off"></button>
+    </div>
+    <div class="row">
+      <label for="rotSpeed">Speed</label>
+      <input type="range" id="rotSpeed" min="10" max="100" value="45">
+      <span class="val" id="rotVal">45%</span>
+    </div>
+    <div class="row">
+      <label>Direction</label>
+      <div class="segment" role="group" aria-label="Rotation direction">
+        <button id="dirCW" aria-pressed="true">Clockwise</button>
+        <button id="dirCCW" aria-pressed="false">Counter</button>
+      </div>
+    </div>
+    <p class="hint">N20 gear motor on the DRV8833 — PWM sets speed, IN pins set direction.</p>
+  </section>
+
+  <!-- WAVES -->
+  <section>
+    <div class="sec-head"><h2>Ocean waves</h2><span class="state" id="waveState">calm</span></div>
+    <div class="row">
+      <label for="waveToggle">Run swell</label>
+      <button class="toggle" id="waveToggle" aria-pressed="false" aria-label="Waves on or off"></button>
+    </div>
+    <div class="row">
+      <label for="waveLevel">Swell height</label>
+      <input type="range" id="waveLevel" min="10" max="100" value="40">
+      <span class="val" id="waveVal">40%</span>
+    </div>
+    <p class="hint">Two MG996R servos on the PCA9685 sweep the linkages under the surface.</p>
+  </section>
+
+  <!-- FOG -->
+  <section>
+    <div class="sec-head"><h2>Fog</h2><span class="state" id="fogState">clear</span></div>
+    <div class="flag" id="fogFlag">Low visibility — humidity is above your limit.</div>
+    <div class="row">
+      <label for="fogAuto">Automatic (dark room or damp air)</label>
+      <button class="toggle amber" id="fogAuto" aria-pressed="false" aria-label="Automatic fog"></button>
+    </div>
+    <div class="row">
+      <label for="fogMist">Mist maker</label>
+      <button class="toggle" id="fogMist" aria-pressed="false" aria-label="Mist on or off"></button>
+    </div>
+    <div class="row">
+      <label for="fogThresh">Humidity limit</label>
+      <input type="range" id="fogThresh" min="50" max="95" value="80">
+      <span class="val" id="threshVal">80%</span>
+    </div>
+    <p class="hint">Relay switches the atomizer disk. Auto mode reads the DHT22 and LDR.</p>
+  </section>
+
+  <!-- BOAT -->
+  <section>
+    <div class="sec-head"><h2>Boat</h2><span class="state" id="boatState">moored</span></div>
+    <div class="row">
+      <label for="boatToggle">Sail</label>
+      <button class="toggle" id="boatToggle" aria-pressed="false" aria-label="Boat motor on or off"></button>
+    </div>
+    <div class="row">
+      <label for="boatSpeed">Speed</label>
+      <input type="range" id="boatSpeed" min="10" max="100" value="50">
+      <span class="val" id="boatVal">50%</span>
+    </div>
+    <p class="hint">Proximity sensor at the finish line raises a banner when the boat arrives.</p>
+  </section>
+
+</div>
+
+<div class="finish" id="finishBanner">Boat reached the finish line</div>
+
+<!-- connection sheet -->
+<div class="sheet-back" id="sheetBack">
+  <div class="sheet" role="dialog" aria-label="Connection settings">
+    <h3>Connect to the diorama</h3>
+    <p>Enter the ESP32's IP address on your Wi-Fi network. The console talks to it over a WebSocket at <b>ws://ip/ws</b>.</p>
+    <input type="text" id="ipInput" inputmode="decimal" placeholder="192.168.1.50" autocomplete="off">
+    <div class="btns">
+      <button id="demoBtn">Try demo mode</button>
+      <button class="primary" id="connectBtn">Connect</button>
+    </div>
+    <p class="demo-note">Demo mode simulates sensors and animations so you can test the interface before wiring is done.</p>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   Keeper — mobile console for the lighthouse diorama (ESP32)
+   ---------------------------------------------------------------------
+   PROTOCOL (JSON over WebSocket, ws://<esp32-ip>/ws)
+
+   App -> ESP32:
+     {"cmd":"beacon","level":0-100,"mode":"steady"|"pulse"}
+     {"cmd":"rotate","on":true,"speed":10-100,"dir":1|-1}
+     {"cmd":"waves","on":true,"intensity":10-100}
+     {"cmd":"fog","auto":false,"mist":true,"rhLimit":50-95}
+     {"cmd":"boat","on":true,"speed":10-100}
+
+   ESP32 -> App (send every ~1s, and after any state change):
+     {"type":"sensors","t":29.4,"h":72,"light":340,"pot":512,"prox":false}
+     {"type":"state","beacon":{...},"rotate":{...},"waves":{...},
+                     "fog":{...},"boat":{...}}   // mirror of the cmd shapes
+   ===================================================================== */
+
+const $ = id => document.getElementById(id);
+const hero = $('hero');
+
+const state = {
+  beacon:{level:0, mode:'steady'},
+  rotate:{on:false, speed:45, dir:1},
+  waves:{on:false, intensity:40},
+  fog:{auto:false, mist:false, rhLimit:80},
+  boat:{on:false, speed:50}
+};
+
+let ws = null, demo = false, demoTimer = null;
+
+/* ---------- connection ---------- */
+const chip = $('linkChip'), linkLabel = $('linkLabel');
+$('linkChip').onclick = () => $('sheetBack').classList.add('open');
+$('sheetBack').addEventListener('click', e => { if (e.target.id === 'sheetBack') e.target.classList.remove('open'); });
+
+$('connectBtn').onclick = () => {
+  const ip = $('ipInput').value.trim();
+  if (!ip) return;
+  stopDemo();
+  connect(ip);
+  $('sheetBack').classList.remove('open');
+};
+$('demoBtn').onclick = () => { startDemo(); $('sheetBack').classList.remove('open'); };
+
+function connect(ip){
+  try { ws && ws.close(); } catch(e){}
+  linkLabel.textContent = 'Connecting…';
+  ws = new WebSocket('ws://' + ip + '/ws');
+  ws.onopen = () => { chip.classList.add('on'); chip.classList.remove('demo'); linkLabel.textContent = ip; };
+  ws.onclose = () => { chip.classList.remove('on'); if (!demo) linkLabel.textContent = 'Not connected'; };
+  ws.onerror = () => { chip.classList.remove('on'); linkLabel.textContent = 'Connection failed'; };
+  ws.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch(e){ return; }
+    if (m.type === 'sensors') showSensors(m);
+    if (m.type === 'state')   { Object.keys(state).forEach(k => m[k] && Object.assign(state[k], m[k])); paintAll(); }
+  };
+}
+
+function send(cmd, payload){
+  const msg = Object.assign({cmd}, payload);
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+}
+
+/* ---------- demo mode ---------- */
+function startDemo(){
+  demo = true;
+  chip.classList.add('on','demo');
+  linkLabel.textContent = 'Demo mode';
+  let h = 68;
+  demoTimer = setInterval(() => {
+    h += (Math.random() - .45) * 2.2;
+    h = Math.min(96, Math.max(55, h));
+    showSensors({
+      t: 28.5 + Math.random() * 1.4,
+      h: h,
+      light: state.fog.mist ? 120 + Math.random()*40 : 300 + Math.random()*80,
+      pot: 400 + Math.round(Math.random()*80),
+      prox: state.boat.on && Math.random() > .93
+    });
+  }, 1200);
+}
+function stopDemo(){ demo = false; clearInterval(demoTimer); chip.classList.remove('demo'); }
+
+/* ---------- sensors ---------- */
+let finishTimeout = null;
+function showSensors(m){
+  if (m.t     != null) $('sTemp').textContent  = m.t.toFixed(1);
+  if (m.h     != null) $('sHum').textContent   = Math.round(m.h);
+  if (m.light != null) $('sLight').textContent = Math.round(m.light);
+  if (m.pot   != null) $('sPot').textContent   = m.pot;
+
+  const damp = m.h != null && m.h >= state.fog.rhLimit;
+  $('humCell').classList.toggle('warn', damp);
+  $('fogFlag').classList.toggle('show', damp);
+  if (damp) $('fogState').textContent = 'low visibility';
+  else if (!state.fog.mist) $('fogState').textContent = 'clear';
+
+  if (state.fog.auto && m.h != null){
+    const shouldMist = damp || (m.light != null && m.light < 150);
+    if (shouldMist !== state.fog.mist){
+      state.fog.mist = shouldMist;
+      paintFog(); sendFog();
+    }
+  }
+
+  if (m.prox){
+    $('finishBanner').classList.add('show');
+    clearTimeout(finishTimeout);
+    finishTimeout = setTimeout(() => $('finishBanner').classList.remove('show'), 3000);
+  }
+}
+
+/* ---------- beacon ---------- */
+$('beaconLevel').oninput = e => { state.beacon.level = +e.target.value; paintBeacon(); };
+$('beaconLevel').onchange = sendBeacon;
+$('modeSteady').onclick = () => setMode('steady');
+$('modePulse').onclick  = () => setMode('pulse');
+function setMode(m){ state.beacon.mode = m; paintBeacon(); sendBeacon(); }
+function sendBeacon(){ send('beacon', state.beacon); }
+function paintBeacon(){
+  const {level, mode} = state.beacon;
+  $('beaconVal').textContent = level + '%';
+  $('beaconState').textContent = level ? (mode === 'pulse' ? 'pulsing' : 'lit') : 'off';
+  $('beaconState').classList.toggle('live', level > 0);
+  $('lampRect').style.opacity = .12 + (level/100)*.88;
+  $('lampGlow').style.opacity = level/100;
+  $('beamPoly').style.opacity = level ? .25 + (level/100)*.75 : 0;
+  $('modeSteady').setAttribute('aria-pressed', mode === 'steady');
+  $('modePulse').setAttribute('aria-pressed', mode === 'pulse');
+  hero.classList.toggle('pulsing', mode === 'pulse' && level > 0);
+}
+
+/* ---------- rotation ---------- */
+$('rotToggle').onclick = () => { state.rotate.on = !state.rotate.on; paintRotate(); sendRotate(); };
+$('rotSpeed').oninput = e => { state.rotate.speed = +e.target.value; paintRotate(); };
+$('rotSpeed').onchange = sendRotate;
+$('dirCW').onclick  = () => { state.rotate.dir = 1;  paintRotate(); sendRotate(); };
+$('dirCCW').onclick = () => { state.rotate.dir = -1; paintRotate(); sendRotate(); };
+function sendRotate(){ send('rotate', state.rotate); }
+function paintRotate(){
+  const r = state.rotate;
+  $('rotVal').textContent = r.speed + '%';
+  $('rotState').textContent = r.on ? 'sweeping' : 'stopped';
+  $('rotState').classList.toggle('live', r.on);
+  $('rotToggle').setAttribute('aria-pressed', r.on);
+  $('dirCW').setAttribute('aria-pressed', r.dir === 1);
+  $('dirCCW').setAttribute('aria-pressed', r.dir === -1);
+  hero.classList.toggle('rotating', r.on && state.beacon.level > 0);
+  hero.classList.toggle('rev', r.dir === -1);
+  hero.style.setProperty('--sweep', (11 - r.speed/10) + 's');
+}
+
+/* ---------- waves ---------- */
+$('waveToggle').onclick = () => { state.waves.on = !state.waves.on; paintWaves(); sendWaves(); };
+$('waveLevel').oninput = e => { state.waves.intensity = +e.target.value; paintWaves(); };
+$('waveLevel').onchange = sendWaves;
+function sendWaves(){ send('waves', state.waves); }
+function paintWaves(){
+  const w = state.waves;
+  $('waveVal').textContent = w.intensity + '%';
+  $('waveState').textContent = w.on ? 'rolling' : 'calm';
+  $('waveState').classList.toggle('live', w.on);
+  $('waveToggle').setAttribute('aria-pressed', w.on);
+  hero.classList.toggle('waves-on', w.on);
+  hero.style.setProperty('--wavedur', (10 - w.intensity/14) + 's');
+}
+
+/* ---------- fog ---------- */
+$('fogAuto').onclick = () => { state.fog.auto = !state.fog.auto; paintFog(); sendFog(); };
+$('fogMist').onclick = () => { state.fog.mist = !state.fog.mist; state.fog.auto = false; paintFog(); sendFog(); };
+$('fogThresh').oninput = e => { state.fog.rhLimit = +e.target.value; $('threshVal').textContent = e.target.value + '%'; };
+$('fogThresh').onchange = sendFog;
+function sendFog(){ send('fog', state.fog); }
+function paintFog(){
+  const f = state.fog;
+  $('fogAuto').setAttribute('aria-pressed', f.auto);
+  $('fogMist').setAttribute('aria-pressed', f.mist);
+  $('threshVal').textContent = f.rhLimit + '%';
+  $('fogState').textContent = f.mist ? 'misting' : 'clear';
+  $('fogState').classList.toggle('live', f.mist);
+  hero.classList.toggle('fog-on', f.mist);
+}
+
+/* ---------- boat ---------- */
+$('boatToggle').onclick = () => { state.boat.on = !state.boat.on; paintBoat(); sendBoat(); };
+$('boatSpeed').oninput = e => { state.boat.speed = +e.target.value; paintBoat(); };
+$('boatSpeed').onchange = sendBoat;
+function sendBoat(){ send('boat', state.boat); }
+let boatX = 90, boatDir = 1, boatRAF = null, lastT = 0;
+function boatStep(t){
+  if (!state.boat.on) { boatRAF = null; return; }
+  const dt = lastT ? (t - lastT)/1000 : 0; lastT = t;
+  boatX += boatDir * dt * (6 + state.boat.speed * .5);
+  if (boatX > 320) { boatX = 320; boatDir = -1; }
+  if (boatX < 40)  { boatX = 40;  boatDir = 1; }
+  document.getElementById('boat').setAttribute('transform', `translate(${boatX.toFixed(1)},187) scale(${boatDir},1)`);
+  boatRAF = requestAnimationFrame(boatStep);
+}
+function paintBoat(){
+  const b = state.boat;
+  $('boatVal').textContent = b.speed + '%';
+  $('boatState').textContent = b.on ? 'under way' : 'moored';
+  $('boatState').classList.toggle('live', b.on);
+  $('boatToggle').setAttribute('aria-pressed', b.on);
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (b.on && !boatRAF && !reduced){ lastT = 0; boatRAF = requestAnimationFrame(boatStep); }
+}
+
+function paintAll(){ paintBeacon(); paintRotate(); paintWaves(); paintFog(); paintBoat(); }
+paintAll();
+
+/* open the connection sheet on first load */
+setTimeout(() => $('sheetBack').classList.add('open'), 600);
+</script>
+</body>
+</html>
