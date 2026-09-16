@@ -64,6 +64,8 @@ body{
 @keyframes drift{from{transform:translateX(0)}to{transform:translateX(-120px)}}
 .waves-on .wave-a{animation:drift calc(var(--wavedur,7s)) linear infinite}
 .waves-on .wave-b{animation:drift calc(var(--wavedur,7s) * 1.6) linear infinite reverse}
+.win{transition:fill .4s,opacity .4s}
+.scene-lit .win{fill:var(--beacon)}
 .fogbank{opacity:0;transition:opacity 1.2s}
 .fog-on .fogbank{opacity:.75}
 @keyframes fogdrift{from{transform:translateX(-40px)}to{transform:translateX(40px)}}
@@ -132,6 +134,13 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
 .segment button:focus-visible{outline:2px solid var(--beacon);outline-offset:-2px}
 
 .hint{font-size:.72rem;color:var(--mist);margin:-6px 0 14px}
+.blastbtn{
+  width:100%;padding:13px;border-radius:12px;margin-bottom:14px;
+  border:1px solid var(--beacon-deep);background:rgba(255,179,71,.1);
+  color:var(--beacon);font-family:inherit;font-size:.92rem;font-weight:600;cursor:pointer;
+}
+.blastbtn:active{background:rgba(255,179,71,.25)}
+.blastbtn:focus-visible{outline:2px solid var(--beacon);outline-offset:3px}
 .flag{
   font-size:.78rem;padding:8px 12px;border-radius:10px;margin-bottom:14px;
   background:rgba(70,181,164,.12);color:var(--tide);display:none;
@@ -216,9 +225,9 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
       <!-- lighthouse -->
       <g>
         <polygon points="200,110 230,110 236,196 194,196" fill="#22405c"/>
-        <rect x="199" y="128" width="32" height="9" fill="#e9f0f4" opacity=".9"/>
-        <rect x="197" y="152" width="36" height="9" fill="#e9f0f4" opacity=".9"/>
-        <rect x="196" y="176" width="38" height="9" fill="#e9f0f4" opacity=".9"/>
+        <rect class="win" x="199" y="128" width="32" height="9" fill="#e9f0f4" opacity=".35"/>
+        <rect class="win" x="197" y="152" width="36" height="9" fill="#e9f0f4" opacity=".35"/>
+        <rect class="win" x="196" y="176" width="38" height="9" fill="#e9f0f4" opacity=".35"/>
         <rect x="203" y="86" width="24" height="24" fill="#1a3450"/>
         <rect class="lamp" id="lampRect" x="207" y="66" width="16" height="16" rx="2" fill="#ffb347"/>
         <rect x="203" y="82" width="24" height="5" fill="#2b4d6e"/>
@@ -277,6 +286,21 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
     <p class="hint">Drives the 1&nbsp;W star LED through the MOSFET module (PWM fade).</p>
   </section>
 
+  <!-- SCENE LIGHTS -->
+  <section>
+    <div class="sec-head"><h2>Scene lights</h2><span class="state" id="lightsState">off</span></div>
+    <div class="row">
+      <label for="lightsToggle">Windows &amp; ambient</label>
+      <button class="toggle amber" id="lightsToggle" aria-pressed="false" aria-label="Scene lights on or off"></button>
+    </div>
+    <div class="row">
+      <label for="lightsLevel">Brightness</label>
+      <input type="range" id="lightsLevel" min="5" max="100" value="70">
+      <span class="val" id="lightsVal">70%</span>
+    </div>
+    <p class="hint">Second light channel on its own MOSFET — independent of the beacon.</p>
+  </section>
+
   <!-- ROTATION -->
   <section>
     <div class="sec-head"><h2>Rotation</h2><span class="state" id="rotState">stopped</span></div>
@@ -318,6 +342,7 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
   <section>
     <div class="sec-head"><h2>Fog</h2><span class="state" id="fogState">clear</span></div>
     <div class="flag" id="fogFlag">Low visibility — humidity is above your limit.</div>
+    <button class="blastbtn" id="hornBtn">Sound the foghorn</button>
     <div class="row">
       <label for="fogAuto">Automatic (dark room or damp air)</label>
       <button class="toggle amber" id="fogAuto" aria-pressed="false" aria-label="Automatic fog"></button>
@@ -332,6 +357,21 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
       <span class="val" id="threshVal">80%</span>
     </div>
     <p class="hint">Relay switches the atomizer disk. Auto mode reads the DHT22 and LDR.</p>
+  </section>
+
+  <!-- SOUND -->
+  <section>
+    <div class="sec-head"><h2>Sound</h2><span class="state" id="soundState">quiet</span></div>
+    <div class="row">
+      <label for="ambientToggle">Ocean ambience</label>
+      <button class="toggle" id="ambientToggle" aria-pressed="false" aria-label="Ocean ambience on or off"></button>
+    </div>
+    <div class="row">
+      <label for="volLevel">Volume</label>
+      <input type="range" id="volLevel" min="0" max="100" value="60">
+      <span class="val" id="volVal">60%</span>
+    </div>
+    <p class="hint">DFPlayer Mini — foghorn and waves play from the microSD card.</p>
   </section>
 
   <!-- BOAT -->
@@ -375,6 +415,9 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
 
    App -> ESP32:
      {"cmd":"beacon","level":0-100,"mode":"steady"|"pulse"}
+     {"cmd":"lights","on":true,"level":5-100}
+     {"cmd":"horn"}                                  // one foghorn blast
+     {"cmd":"sound","ambient":true,"volume":0-100}   // DFPlayer ambience
      {"cmd":"rotate","on":true,"speed":10-100,"dir":1|-1}
      {"cmd":"waves","on":true,"intensity":10-100}
      {"cmd":"fog","auto":false,"mist":true,"rhLimit":50-95}
@@ -391,6 +434,8 @@ const hero = $('hero');
 
 const state = {
   beacon:{level:0, mode:'steady'},
+  lights:{on:false, level:70},
+  sound:{ambient:false, volume:60},
   rotate:{on:false, speed:45, dir:1},
   waves:{on:false, intensity:40},
   fog:{auto:false, mist:false, rhLimit:80},
@@ -501,6 +546,23 @@ function paintBeacon(){
   hero.classList.toggle('pulsing', mode === 'pulse' && level > 0);
 }
 
+/* ---------- scene lights ---------- */
+$('lightsToggle').onclick = () => { state.lights.on = !state.lights.on; paintLights(); sendLights(); };
+$('lightsLevel').oninput = e => { state.lights.level = +e.target.value; paintLights(); };
+$('lightsLevel').onchange = sendLights;
+function sendLights(){ send('lights', state.lights); }
+function paintLights(){
+  const L = state.lights;
+  $('lightsVal').textContent = L.level + '%';
+  $('lightsState').textContent = L.on ? 'lit' : 'off';
+  $('lightsState').classList.toggle('live', L.on);
+  $('lightsToggle').setAttribute('aria-pressed', L.on);
+  hero.classList.toggle('scene-lit', L.on);
+  document.querySelectorAll('.win').forEach(w => {
+    w.style.opacity = L.on ? (.35 + (L.level/100)*.65) : .35;
+  });
+}
+
 /* ---------- rotation ---------- */
 $('rotToggle').onclick = () => { state.rotate.on = !state.rotate.on; paintRotate(); sendRotate(); };
 $('rotSpeed').oninput = e => { state.rotate.speed = +e.target.value; paintRotate(); };
@@ -534,6 +596,22 @@ function paintWaves(){
   $('waveToggle').setAttribute('aria-pressed', w.on);
   hero.classList.toggle('waves-on', w.on);
   hero.style.setProperty('--wavedur', (10 - w.intensity/14) + 's');
+}
+
+/* ---------- foghorn ---------- */
+$('hornBtn').onclick = () => send('horn', {});
+
+/* ---------- sound ---------- */
+$('ambientToggle').onclick = () => { state.sound.ambient = !state.sound.ambient; paintSound(); sendSound(); };
+$('volLevel').oninput = e => { state.sound.volume = +e.target.value; paintSound(); };
+$('volLevel').onchange = sendSound;
+function sendSound(){ send('sound', state.sound); }
+function paintSound(){
+  const S = state.sound;
+  $('volVal').textContent = S.volume + '%';
+  $('soundState').textContent = S.ambient ? 'waves rolling' : 'quiet';
+  $('soundState').classList.toggle('live', S.ambient);
+  $('ambientToggle').setAttribute('aria-pressed', S.ambient);
 }
 
 /* ---------- fog ---------- */
@@ -577,7 +655,7 @@ function paintBoat(){
   if (b.on && !boatRAF && !reduced){ lastT = 0; boatRAF = requestAnimationFrame(boatStep); }
 }
 
-function paintAll(){ paintBeacon(); paintRotate(); paintWaves(); paintFog(); paintBoat(); }
+function paintAll(){ paintBeacon(); paintLights(); paintRotate(); paintWaves(); paintFog(); paintSound(); paintBoat(); }
 paintAll();
 
 /* open the connection sheet on first load */
