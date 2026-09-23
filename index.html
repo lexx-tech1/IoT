@@ -70,7 +70,10 @@ body{
 .fog-on .fogbank{opacity:.75}
 @keyframes fogdrift{from{transform:translateX(-40px)}to{transform:translateX(40px)}}
 .fog-on .fogbank g{animation:fogdrift 9s ease-in-out infinite alternate}
+@keyframes strike{0%{opacity:.6}12%{opacity:.08}22%{opacity:.45}100%{opacity:0}}
+.strike #skyFlash{animation:strike .6s ease-out}
 @media (prefers-reduced-motion:reduce){
+  .strike #skyFlash{animation:none}
   .beam-wrap,.wave-a,.wave-b,.fogbank g,.pulsing .lamp,.pulsing .lamp-glow,.pulsing .beam{animation:none !important}
 }
 
@@ -134,6 +137,14 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
 .segment button:focus-visible{outline:2px solid var(--beacon);outline-offset:-2px}
 
 .hint{font-size:.72rem;color:var(--mist);margin:-6px 0 14px}
+input[type=color]{
+  appearance:none;-webkit-appearance:none;width:56px;height:34px;flex:none;
+  border:1px solid var(--sea-line);border-radius:10px;background:transparent;padding:2px;cursor:pointer;
+}
+input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+input[type=color]::-webkit-color-swatch{border:none;border-radius:7px}
+input[type=color]::-moz-color-swatch{border:none;border-radius:7px}
+input[type=color]:focus-visible{outline:2px solid var(--beacon);outline-offset:3px}
 .blastbtn{
   width:100%;padding:13px;border-radius:12px;margin-bottom:14px;
   border:1px solid var(--beacon-deep);background:rgba(255,179,71,.1);
@@ -257,6 +268,7 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
           <ellipse cx="400" cy="204" rx="120" ry="24" fill="#8fa6b8" opacity=".25"/>
         </g>
       </g>
+      <rect id="skyFlash" width="430" height="230" fill="#ffffff" opacity="0"/>
     </svg>
   </div>
 
@@ -288,9 +300,9 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
 
   <!-- SCENE LIGHTS -->
   <section>
-    <div class="sec-head"><h2>Scene lights</h2><span class="state" id="lightsState">off</span></div>
+    <div class="sec-head"><h2>Weather &amp; storm</h2><span class="state" id="lightsState">off</span></div>
     <div class="row">
-      <label for="lightsToggle">Windows &amp; ambient</label>
+      <label for="lightsToggle">RGB strip</label>
       <button class="toggle amber" id="lightsToggle" aria-pressed="false" aria-label="Scene lights on or off"></button>
     </div>
     <div class="row">
@@ -298,7 +310,20 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
       <input type="range" id="lightsLevel" min="5" max="100" value="70">
       <span class="val" id="lightsVal">70%</span>
     </div>
-    <p class="hint">Second light channel on its own MOSFET — independent of the beacon.</p>
+    <div class="row">
+      <label for="lightsColor">Color</label>
+      <input type="color" id="lightsColor" value="#ffb347">
+    </div>
+    <div class="row">
+      <label>Effect</label>
+      <div class="segment" role="group" aria-label="Strip effect">
+        <button id="lmSolid" aria-pressed="true">Solid</button>
+        <button id="lmOcean" aria-pressed="false">Ocean</button>
+        <button id="lmStorm" aria-pressed="false">Storm</button>
+      </div>
+    </div>
+    <button class="blastbtn" id="strikeBtn">Lightning strike</button>
+    <p class="hint">RGB strip on GPIO 16. Storm mode strikes on its own, each flash followed by thunder (0001.mp3). The button strikes once in any mode.</p>
   </section>
 
   <!-- ROTATION -->
@@ -342,7 +367,6 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
   <section>
     <div class="sec-head"><h2>Fog</h2><span class="state" id="fogState">clear</span></div>
     <div class="flag" id="fogFlag">Low visibility — humidity is above your limit.</div>
-    <button class="blastbtn" id="hornBtn">Sound the foghorn</button>
     <div class="row">
       <label for="fogAuto">Automatic (dark room or damp air)</label>
       <button class="toggle amber" id="fogAuto" aria-pressed="false" aria-label="Automatic fog"></button>
@@ -371,7 +395,7 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
       <input type="range" id="volLevel" min="0" max="100" value="60">
       <span class="val" id="volVal">60%</span>
     </div>
-    <p class="hint">DFPlayer Mini — foghorn and waves play from the microSD card.</p>
+    <p class="hint">DFPlayer Mini: 0001.mp3 thunder, 0002.mp3 ocean waves. Thunder briefly interrupts the waves, which then resume.</p>
   </section>
 
   <!-- BOAT -->
@@ -415,8 +439,8 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
 
    App -> ESP32:
      {"cmd":"beacon","level":0-100,"mode":"steady"|"pulse"}
-     {"cmd":"lights","on":true,"level":5-100}
-     {"cmd":"horn"}                                  // one foghorn blast
+     {"cmd":"lights","on":true,"level":5-100,"color":"#rrggbb","mode":"solid"|"ocean"|"storm"}
+     {"cmd":"thunder"}                               // one lightning strike + thunder
      {"cmd":"sound","ambient":true,"volume":0-100}   // DFPlayer ambience
      {"cmd":"rotate","on":true,"speed":10-100,"dir":1|-1}
      {"cmd":"waves","on":true,"intensity":10-100}
@@ -424,6 +448,7 @@ input[type=range]:focus-visible{outline:2px solid var(--beacon);outline-offset:4
      {"cmd":"boat","on":true,"speed":10-100}
 
    ESP32 -> App (send every ~1s, and after any state change):
+     {"type":"strike"}                               // a lightning strike happened
      {"type":"sensors","t":29.4,"h":72,"light":340,"pot":512,"prox":false}
      {"type":"state","beacon":{...},"rotate":{...},"waves":{...},
                      "fog":{...},"boat":{...}}   // mirror of the cmd shapes
@@ -434,7 +459,7 @@ const hero = $('hero');
 
 const state = {
   beacon:{level:0, mode:'steady'},
-  lights:{on:false, level:70},
+  lights:{on:false, level:70, color:'#ffb347', mode:'solid'},
   sound:{ambient:false, volume:60},
   rotate:{on:false, speed:45, dir:1},
   waves:{on:false, intensity:40},
@@ -468,6 +493,7 @@ function connect(ip){
   ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch(e){ return; }
     if (m.type === 'sensors') showSensors(m);
+    if (m.type === 'strike')  flashSky();
     if (m.type === 'state')   { Object.keys(state).forEach(k => m[k] && Object.assign(state[k], m[k])); paintAll(); }
   };
 }
@@ -550,16 +576,26 @@ function paintBeacon(){
 $('lightsToggle').onclick = () => { state.lights.on = !state.lights.on; paintLights(); sendLights(); };
 $('lightsLevel').oninput = e => { state.lights.level = +e.target.value; paintLights(); };
 $('lightsLevel').onchange = sendLights;
+$('lightsColor').oninput  = e => { state.lights.color = e.target.value; paintLights(); };
+$('lightsColor').onchange = sendLights;
+['Solid','Ocean','Storm'].forEach(n => {
+  $('lm' + n).onclick = () => { state.lights.mode = n.toLowerCase(); paintLights(); sendLights(); };
+});
 function sendLights(){ send('lights', state.lights); }
 function paintLights(){
   const L = state.lights;
   $('lightsVal').textContent = L.level + '%';
-  $('lightsState').textContent = L.on ? 'lit' : 'off';
+  const modeText = {solid:'lit', ocean:'ocean shimmer', storm:'storm'};
+  $('lightsState').textContent = L.on ? (modeText[L.mode] || 'lit') : 'off';
+  $('lightsLevel').value = L.level;
+  $('lightsColor').value = L.color;
+  ['Solid','Ocean','Storm'].forEach(n => $('lm' + n).setAttribute('aria-pressed', L.mode === n.toLowerCase()));
   $('lightsState').classList.toggle('live', L.on);
   $('lightsToggle').setAttribute('aria-pressed', L.on);
   hero.classList.toggle('scene-lit', L.on);
   document.querySelectorAll('.win').forEach(w => {
     w.style.opacity = L.on ? (.35 + (L.level/100)*.65) : .35;
+    w.style.fill = L.on ? L.color : '';
   });
 }
 
@@ -598,8 +634,13 @@ function paintWaves(){
   hero.style.setProperty('--wavedur', (10 - w.intensity/14) + 's');
 }
 
-/* ---------- foghorn ---------- */
-$('hornBtn').onclick = () => send('horn', {});
+/* ---------- lightning ---------- */
+$('strikeBtn').onclick = () => send('thunder', {});
+function flashSky(){
+  hero.classList.remove('strike');
+  void hero.getBoundingClientRect();   // restart the animation
+  hero.classList.add('strike');
+}
 
 /* ---------- sound ---------- */
 $('ambientToggle').onclick = () => { state.sound.ambient = !state.sound.ambient; paintSound(); sendSound(); };
